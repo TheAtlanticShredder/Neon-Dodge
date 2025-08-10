@@ -1,10 +1,10 @@
 {
-  "name": "Neon Dodge",
-  "short_name": "NeonDodge",
-  "description": "Dodge neon shards, grab rings, survive. A tiny arcade built in ChatGPT.",
-  "start_url": "./neon-dodge.html",
+  "name": "Cypher Math",
+  "short_name": "CypherMath",
+  "description": "Cyberpunk math-arcade: dodge, collect, solve. Puzzle mode included.",
+  "start_url": "./",
   "display": "standalone",
-  "background_color": "#090e17",
+  "background_color": "#080a10",
   "theme_color": "#0b0f1a",
   "icons": [
     {
