@@ -1,0 +1,21 @@
+{
+  "name": "Neon Dodge",
+  "short_name": "NeonDodge",
+  "description": "Dodge neon shards, grab rings, survive. A tiny arcade built in ChatGPT.",
+  "start_url": "./neon-dodge.html",
+  "display": "standalone",
+  "background_color": "#090e17",
+  "theme_color": "#0b0f1a",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

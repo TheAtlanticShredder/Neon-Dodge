@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Neon Dodge — tiny web game</title>
+  <meta name="theme-color" content="#0b0f1a">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" sizes="192x192" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <style>
+    :root{
+      --bg:#0b0f1a; --fg:#e6f0ff; --neon1:#00f5d4; --neon2:#7b61ff; --neon3:#ff477e; --muted:#718096;
+    }
+    html,body{height:100%;}
+    body{
+      margin:0; background:radial-gradient(1200px 800px at 70% -10%, #12203a, transparent 60%),
+                 radial-gradient(900px 600px at -10% 110%, #1a1030, transparent 60%), var(--bg);
+      color:var(--fg); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+      display:flex; align-items:center; justify-content:center;
+    }
+    .wrap{ width:min(900px, 96vw);}
+    .card{ border-radius:18px; box-shadow:0 10px 30px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.06);
+           background:rgba(255,255,255,.03); backdrop-filter: blur(8px);}
+    header{ display:flex; align-items:center; justify-content:space-between; padding:14px 18px; }
+    h1{ font-size:20px; margin:0; letter-spacing:.5px; font-weight:700; }
+    .btn{ cursor:pointer; border:none; padding:10px 14px; border-radius:12px; font-weight:700; color:#0a0a0a; background:linear-gradient(90deg, var(--neon1), var(--neon2)); }
+    .btn:active{ transform:translateY(1px); }
+    .hud{ display:flex; gap:16px; align-items:center; font-weight:700; }
+    .hud .pill{ padding:6px 10px; border-radius:999px; background:rgba(255,255,255,.06); font-variant-numeric:tabular-nums; }
+    .canvas-wrap{ position:relative; aspect-ratio: 16/9; width:100%; }
+    canvas{ width:100%; height:100%; display:block; border-radius:18px; box-shadow: inset 0 0 0 2px rgba(255,255,255,.06);
+            background: radial-gradient(600px 400px at 50% 30%, rgba(123,97,255,.12), transparent 60%),
+                       radial-gradient(400px 300px at 20% 80%, rgba(0,245,212,.12), transparent 60%),
+                       #090e17;}
+    .overlay{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none; }
+    .panel{ text-align:center; max-width:80%; pointer-events:auto; }
+    .title{ font-size:28px; font-weight:900; margin-bottom:8px; }
+    .muted{ color:var(--muted); font-size:14px; }
+    .big{ font-size:18px; }
+    .kbd{ font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight:700; padding:2px 6px; border-radius:6px; background:rgba(255,255,255,.08); }
+    .hidden{ display:none; }
+    footer{ text-align:center; color:var(--muted); font-size:12px; margin-top:10px; }
+    /* Mobile touch controls */
+    .stick{ position:absolute; left:14px; bottom:14px; width:120px; height:120px; border-radius:50%; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.08); display:none; }
+    .stick-dot{ position:absolute; left:50%; top:50%; width:44px; height:44px; margin-left:-22px; margin-top:-22px; border-radius:50%; background:linear-gradient(90deg, var(--neon3), var(--neon2)); box-shadow:0 0 14px rgba(255,71,126,.6); }
+    @media (hover:none){ .stick{ display:block; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <header>
+        <h1>NEON DODGE</h1>
+        <div class="hud">
+          <div class="pill">Score: <span id="score">0</span></div>
+          <div class="pill">Best: <span id="best">0</span></div>
+          <button id="btnPause" class="btn" title="Pause (P)">Pause</button>
+        </div>
+      </header>
+      <div class="canvas-wrap">
+        <canvas id="game" width="960" height="540"></canvas>
+        <div id="start" class="overlay">
+          <div class="panel">
+            <div class="title">Dodge the neon shards.</div>
+            <div class="big">Move with <span class="kbd">WASD</span> / <span class="kbd">←↑→↓</span> or drag the joystick on mobile.</div>
+            <div class="muted" style="margin:10px 0 16px">Survive as long as you can. Collect rings for points. Difficulty ramps fast.</div>
+            <button id="btnStart" class="btn">Start Game</button>
+          </div>
+        </div>
+        <div id="gameover" class="overlay hidden">
+          <div class="panel">
+            <div class="title">Game Over</div>
+            <div class="big">Final score: <span id="final">0</span></div>
+            <div class="muted" style="margin:10px 0 16px">Tip: Keep moving in arcs to bait shards, then cut across.</div>
+            <button id="btnRetry" class="btn">Play Again</button>
+          </div>
+        </div>
+        <div class="stick" id="stick"><div class="stick-dot" id="stickDot"></div></div>
+      </div>
+      <footer>© Neon Dodge — PWA build</footer>
+    </div>
+  </div>
+
+<script>
+(function(){
+  const cv = document.getElementById('game');
+  const ctx = cv.getContext('2d');
+  const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  cv.width = 960 * dpr; cv.height = 540 * dpr; ctx.scale(dpr, dpr);
+
+  const elScore = document.getElementById('score');
+  const elBest = document.getElementById('best');
+  const elFinal = document.getElementById('final');
+  const elStart = document.getElementById('start');
+  const elGameOver = document.getElementById('gameover');
+  const btnStart = document.getElementById('btnStart');
+  const btnRetry = document.getElementById('btnRetry');
+  const btnPause = document.getElementById('btnPause');
+
+  const stick = document.getElementById('stick');
+  const stickDot = document.getElementById('stickDot');
+  let stickActive=false, stickVec={x:0,y:0};
+
+  const state = {
+    running:false, paused:false, over:false,
+    w: 960, h: 540,
+    t:0, last:0, dt:0,
+    score:0, best: Number(localStorage.getItem('neondodge_best')||0),
+    player:{x:480, y:270, r:10, vx:0, vy:0, speed:220, alive:true, inv:0},
+    shards:[], rings:[], particles:[],
+    spawnTimer:0, ringTimer:0,
+    difficulty:0,
+    keys: new Set()
+  };
+  elBest.textContent = state.best;
+
+  function reset(){
+    state.t=0; state.last=0; state.dt=0; state.score=0; state.spawnTimer=0; state.ringTimer=0; state.difficulty=0;
+    state.shards.length=0; state.rings.length=0; state.particles.length=0;
+    state.player.x=state.w/2; state.player.y=state.h/2; state.player.vx=0; state.player.vy=0; state.player.alive=true; state.player.inv=1.0;
+    elScore.textContent = '0';
+  }
+
+  function start(){ reset(); state.running=true; state.over=false; elStart.classList.add('hidden'); elGameOver.classList.add('hidden'); }
+  function gameOver(){ state.over=true; state.running=false; elFinal.textContent = state.score.toFixed(0); elGameOver.classList.remove('hidden');
+    if(state.score>state.best){ state.best=state.score; localStorage.setItem('neondodge_best', state.score.toFixed(0)); elBest.textContent = state.best; }
+  }
+
+  document.getElementById('btnStart').addEventListener('click', start);
+  document.getElementById('btnRetry')?.addEventListener('click', start);
+  btnPause.addEventListener('click', ()=>{ state.paused=!state.paused; btnPause.textContent = state.paused? 'Resume' : 'Pause'; });
+
+  window.addEventListener('keydown', (e)=>{
+    if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','w','a','s','d','W','A','S','D',' '].includes(e.key)) e.preventDefault();
+    if(e.key==='p' || e.key==='P'){ state.paused=!state.paused; btnPause.textContent = state.paused? 'Resume' : 'Pause'; }
+    if(e.key===' ' && state.over){ start(); }
+    state.keys.add(e.key.toLowerCase());
+  });
+  window.addEventListener('keyup', (e)=> state.keys.delete(e.key.toLowerCase()));
+
+  function touchVecFromEvent(ev){
+    const rect = stick.getBoundingClientRect();
+    const cx = rect.left + rect.width/2; const cy = rect.top + rect.height/2;
+    const t = ev.touches[0];
+    const dx = t.clientX - cx; const dy = t.clientY - cy; const max = rect.width/2 - 10;
+    const mag = Math.hypot(dx,dy); const cl = mag>max ? max/mag : 1;
+    return {x: dx*cl/max, y: dy*cl/max, px: cx + dx*cl, py: cy + dy*cl};
+  }
+  stick.addEventListener('touchstart', (ev)=>{ const v=touchVecFromEvent(ev); stickActive=true; stickVec.x=v.x; stickVec.y=v.y;
+    stickDot.style.left=(v.px-stick.getBoundingClientRect().left-22)+"px"; stickDot.style.top=(v.py-stick.getBoundingClientRect().top-22)+"px"; }, {passive:false});
+  stick.addEventListener('touchmove', (ev)=>{ const v=touchVecFromEvent(ev); stickVec.x=v.x; stickVec.y=v.y;
+    stickDot.style.left=(v.px-stick.getBoundingClientRect().left-22)+"px"; stickDot.style.top=(v.py-stick.getBoundingClientRect().top-22)+"px"; ev.preventDefault(); }, {passive:false});
+  stick.addEventListener('touchend', ()=>{ stickActive=false; stickVec.x=0; stickVec.y=0; stickDot.style.left='calc(50% - 22px)'; stickDot.style.top='calc(50% - 22px)'; });
+
+  function spawnShard(){
+    const edge = Math.floor(Math.random()*4);
+    let x,y,vx,vy; const sp = 70 + state.difficulty*30 + Math.random()*40;
+    if(edge===0){ x=-20; y=Math.random()*state.h; }
+    else if(edge===1){ x=state.w+20; y=Math.random()*state.h; }
+    else if(edge===2){ x=Math.random()*state.w; y=-20; }
+    else { x=Math.random()*state.w; y=state.h+20; }
+    const ang = Math.atan2(state.player.y - y, state.player.x - x) + (Math.random()*0.6 - 0.3);
+    vx = Math.cos(ang)*sp; vy = Math.sin(ang)*sp;
+    state.shards.push({x,y,vx,vy, r:8 + Math.random()*7, life: 12});
+  }
+  function spawnRing(){
+    state.rings.push({x: 40+Math.random()*(state.w-80), y: 40+Math.random()*(state.h-80), r: 10, life: 8});
+  }
+  function addBurst(x,y,col){
+    for(let i=0;i<12;i++){
+      const a=Math.random()*Math.PI*2; const s=60+Math.random()*120;
+      state.particles.push({x,y,vx:Math.cos(a)*s, vy:Math.sin(a)*s, life: .6+Math.random()*.4, col});
+    }
+  }
+  function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+  function circleHit(a,b){ const dx=a.x-b.x, dy=a.y-b.y; return (dx*dx+dy*dy) <= (a.r+b.r)*(a.r+b.r); }
+
+  function loop(ts){
+    if(!state.running){ requestAnimationFrame(loop); return; }
+    if(state.last===0) state.last = ts; state.dt = Math.min(0.033, (ts - state.last)/1000); state.last = ts; if(state.paused){ draw(true); requestAnimationFrame(loop); return; }
+    state.t += state.dt; state.difficulty = Math.min(1, state.t/60) + state.t/120;
+
+    let ax=0, ay=0; if(state.keys.has('arrowleft')||state.keys.has('a')) ax-=1; if(state.keys.has('arrowright')||state.keys.has('d')) ax+=1; if(state.keys.has('arrowup')||state.keys.has('w')) ay-=1; if(state.keys.has('arrowdown')||state.keys.has('s')) ay+=1;
+    if(stickActive){ ax += stickVec.x*1.2; ay += stickVec.y*1.2; }
+    const mag = Math.hypot(ax,ay)||1; const sp = state.player.speed; state.player.vx = (ax/mag)*sp; state.player.vy = (ay/mag)*sp;
+
+    state.player.x = clamp(state.player.x + state.player.vx*state.dt, 10, state.w-10);
+    state.player.y = clamp(state.player.y + state.player.vy*state.dt, 10, state.h-10);
+    if(state.player.inv>0) state.player.inv -= state.dt;
+
+    state.spawnTimer -= state.dt; state.ringTimer -= state.dt;
+    if(state.spawnTimer<=0){ for(let i=0;i<1+Math.floor(state.difficulty*0.6); i++) spawnShard(); state.spawnTimer = Math.max(0.25, 0.9 - state.difficulty*0.12); }
+    if(state.ringTimer<=0){ spawnRing(); state.ringTimer = 2.2 - Math.min(1.6, state.difficulty*0.3) + Math.random()*0.5; }
+
+    for(let i=state.shards.length-1;i>=0;i--){
+      const s = state.shards[i]; s.x += s.vx*state.dt; s.y += s.vy*state.dt; s.life -= state.dt*0.06;
+      if(s.x < -40 || s.x>state.w+40 || s.y<-40 || s.y>state.h+40){ state.shards.splice(i,1); continue; }
+      if(circleHit({x:s.x,y:s.y,r:s.r},{x:state.player.x,y:state.player.y,r:state.player.r}) && state.player.inv<=0){
+        addBurst(state.player.x, state.player.y, '#ff477e');
+        gameOver();
+      }
+    }
+
+    for(let i=state.rings.length-1;i>=0;i--){
+      const r = state.rings[i]; r.life -= state.dt; if(r.life<=0){ state.rings.splice(i,1); continue; }
+      if(circleHit(r, state.player)){ state.score += 10; elScore.textContent = state.score.toFixed(0); addBurst(r.x,r.y,'#00f5d4'); state.rings.splice(i,1); }
+    }
+
+    for(let i=state.particles.length-1;i>=0;i--){
+      const p=state.particles[i]; p.x += p.vx*state.dt; p.y += p.vy*state.dt; p.life -= state.dt; if(p.life<=0) state.particles.splice(i,1);
+    }
+
+    draw(false);
+    if(!state.over) requestAnimationFrame(loop);
+  }
+
+  function draw(paused){
+    const w=960, h=540;
+    ctx.clearRect(0,0,w,h);
+
+    ctx.save();
+    ctx.globalAlpha = 0.08; ctx.strokeStyle = '#7b61ff'; ctx.lineWidth = 1;
+    const gap=40; for(let x=0;x<=w;x+=gap){ ctx.beginPath(); ctx.moveTo(x+0.5,0); ctx.lineTo(x+0.5,h); ctx.stroke(); }
+    for(let y=0;y<=h;y+=gap){ ctx.beginPath(); ctx.moveTo(0,y+0.5); ctx.lineTo(w,y+0.5); ctx.stroke(); }
+    ctx.restore();
+
+    const pl = state.player; ctx.save(); ctx.shadowBlur=20; ctx.shadowColor = '#00f5d4';
+    ctx.beginPath(); ctx.fillStyle = pl.inv>0? 'rgba(0,245,212,0.5)' : '#00f5d4'; ctx.arc(pl.x,pl.y,pl.r,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+
+    for(const s of state.shards){
+      ctx.save(); ctx.shadowBlur=14; ctx.shadowColor='#ff477e'; ctx.fillStyle='#ff477e';
+      ctx.translate(s.x, s.y); ctx.rotate(Math.atan2(s.vy, s.vx));
+      ctx.beginPath(); ctx.moveTo(-s.r,0); ctx.lineTo(0,-s.r*0.7); ctx.lineTo(s.r,0); ctx.lineTo(0,s.r*0.7); ctx.closePath(); ctx.fill();
+      const len = 24 + (1-s.life)*60; const grad = ctx.createLinearGradient(-len,0, s.r,0);
+      grad.addColorStop(0,'rgba(255,71,126,0)'); grad.addColorStop(1,'rgba(255,71,126,.55)');
+      ctx.fillStyle = grad; ctx.fillRect(-len,-2, len, 4);
+      ctx.restore();
+    }
+
+    for(const r of state.rings){
+      ctx.save(); ctx.strokeStyle = '#7b61ff'; ctx.lineWidth = 3; ctx.shadowBlur=12; ctx.shadowColor='#7b61ff';
+      ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, Math.PI*2); ctx.stroke();
+      ctx.restore();
+    }
+
+    for(const p of state.particles){ ctx.save(); ctx.globalAlpha = max0(p.life); ctx.fillStyle=p.col; ctx.beginPath(); ctx.arc(p.x,p.y,2,0,Math.PI*2); ctx.fill(); ctx.restore(); }
+
+    if(paused){
+      ctx.save(); ctx.globalAlpha=.6; ctx.fillStyle='#000'; ctx.fillRect(0,0,w,h); ctx.restore();
+      ctx.save(); ctx.fillStyle='#e6f0ff'; ctx.font='700 24px ui-sans-serif, system-ui'; ctx.textAlign='center'; ctx.fillText('Paused — press P to resume', w/2, h/2); ctx.restore();
+    }
+  }
+  function max0(v){ return v>0?v:0; }
+
+  requestAnimationFrame(loop);
+
+  // Register service worker
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', ()=>{
+      navigator.serviceWorker.register('sw.js').catch(console.error);
+    });
+  }
+})();
+</script>
+</body>
+</html>
